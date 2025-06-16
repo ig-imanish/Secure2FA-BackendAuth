@@ -46,7 +46,8 @@ public class SpringSecurityConfig {
                 "http://localhost:5500",
                 "http://127.0.0.1:5500",
                 "http://localhost:3000",
-                "http://127.0.0.1:3000"));
+                "http://127.0.0.1:3000",
+                "https://securetotp-service.onrender.com"));
 
         corsConfig.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         corsConfig.setAllowedHeaders(List.of("Authorization", "Content-Type", "ngrok-skip-browser-warning", "User-Agent"));
