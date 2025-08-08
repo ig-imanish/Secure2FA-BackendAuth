@@ -1,518 +1,581 @@
-# My API Documentation
+# SecureTOTP Backend Authentication API Documentation
 
 ## Overview
 
-This API provides endpoints for user management, authentication, and premium features with JWT-based authentication.
+SecureTOTP Backend Authentication API provides comprehensive endpoints for user management, authentication, TOTP operations, and administrative functions with JWT-based security.
 
 - **Version**: 1.0
 - **Base URL**: `http://localhost:9000`
+- **Protocol**: HTTPS (recommended for production)
+- **Authentication**: JWT Bearer tokens
+
+## Quick Start
+
+### 1. Register a New User
+
+```bash
+curl -X POST http://localhost:9000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "fullName": "John Doe",
+    "username": "johndoe",
+    "email": "john@example.com",
+    "password": "SecurePass123!"
+  }'
+```
+
+### 2. Login and Get Token
+
+```bash
+curl -X POST http://localhost:9000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "emailOrUsername": "johndoe",
+    "password": "SecurePass123!"
+  }'
+```
+
+### 3. Access Protected Endpoints
+
+```bash
+curl -X GET http://localhost:9000/api/v1/users/me \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
 
 ## Authentication
 
-All endpoints, unless specified, require a Bearer token in the `Authorization` header. The token must be a valid JWT.
+### JWT Token Format
+
+All protected endpoints require a Bearer token in the `Authorization` header:
 
 ```http
 Authorization: Bearer <your-jwt-token>
 ```
 
-## Tags
+### Token Lifecycle
 
-- **private-user-controller**: Endpoints for user management and profile updates.
-- **user-profile-update-controller**: Endpoints for updating user profile details.
-- **premium-rest-controller**: Endpoints for managing premium redeem codes.
-- **auth-rest-controller**: Endpoints for authentication, including login, logout, and OTP verification.
-- **admin-rest-controller**: Administrative endpoints for user management.
-- **super-admin-rest-controller**: Super admin endpoints.
-- **global-access-controller**: Publicly accessible endpoints.
+- **Access Token**: 24 hours validity
+- **Refresh Token**: 7 days validity
+- **Automatic Refresh**: Use refresh endpoint before expiration
 
-## Endpoints
+## API Endpoints
 
-### Private User Controller
+### Authentication Endpoints
 
-#### Get Current User
+#### POST /api/v1/auth/register
 
-**GET** `/api/v1/users/me`
+Register a new user account.
 
-Retrieve the authenticated user's details.
+**Request Body:**
 
-- **Responses**:
-  - **200**: User details retrieved successfully
-    ```json
-    {
-      "id": "string",
-      "fullName": "string",
-      "username": "string",
-      "email": "string",
-      "roles": [
-        {
-          "id": "string",
-          "roleName": "string",
-          "username": "string"
-        }
-      ],
-      "provider": "string",
-      "redeemCode": {
-        "id": "string",
-        "redeemCode": "string",
-        "redeemedBy": "string",
-        "redeemedAt": "string (date-time)",
-        "createdAt": "string (date-time)",
-        "used": "boolean"
-      },
-      "accountCreatedAt": "string (date-time)",
-      "verified": "boolean",
-      "otp": "string",
-      "otpGeneratedTime": "string (date-time)",
-      "userAvatar": "string",
-      "userAvatarpublicId": "string",
-      "userBanner": "string",
-      "userBannerpublicId": "string",
-      "premium": "boolean"
-    }
-    ```
-- **Security**: Bearer token required
+```json
+{
+  "fullName": "John Doe",
+  "username": "johndoe",
+  "email": "john@example.com",
+  "password": "SecurePass123!",
+  "provider": "local"
+}
+```
 
-#### Get Users
+**Response (200 OK):**
 
-**GET** `/api/v1/users`
+```json
+{
+  "message": "User registered successfully. Please verify your email.",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "success": true
+}
+```
 
-Retrieve a list of all users.
+#### POST /api/v1/auth/login
 
-- **Responses**:
-  - **200**: List of users retrieved successfully
-    ```json
-    [
-      {
-        "id": "string",
-        "fullName": "string",
-        "username": "string",
-        "email": "string",
-        "roles": [
-          {
-            "id": "string",
-            "roleName": "string",
-            "username": "string"
-          }
-        ],
-        "provider": "string",
-        "redeemCode": {
-          "id": "string",
-          "redeemCode": "string",
-          "redeemedBy": "string",
-          "redeemedAt": "string (date-time)",
-          "createdAt": "string (date-time)",
-          "used": "boolean"
-        },
-        "accountCreatedAt": "string (date-time)",
-        "verified": "boolean",
-        "otp": "string",
-        "otpGeneratedTime": "string (date-time)",
-        "userAvatar": "string",
-        "userAvatarpublicId": "string",
-        "userBanner": "string",
-        "userBannerpublicId": "string",
-        "premium": "boolean"
-      }
-    ]
-    ```
-- **Security**: Bearer token required
+Authenticate user and receive JWT token.
 
-#### Redeem Premium
+**Request Body:**
 
-**GET** `/api/v1/users/redeem`
+```json
+{
+  "emailOrUsername": "johndoe",
+  "password": "SecurePass123!"
+}
+```
 
-Redeem a premium code for the authenticated user.
+**Response (200 OK):**
 
-- **Parameters**:
-  - `code` (query, required): Premium redeem code
-- **Responses**:
-  - **200**: Premium code redeemed successfully
-    ```json
-    {
-      "message": "string",
-      "timestamp": "string (date-time)",
-      "success": "boolean"
-    }
-    ```
-- **Security**: Bearer token required
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "type": "Bearer",
+  "id": "user-id-123",
+  "username": "johndoe",
+  "email": "john@example.com",
+  "roles": ["USER"]
+}
+```
 
-#### Display User Info
+#### POST /api/v1/auth/verify-otp
 
-**GET** `/api/v1/users/info`
+Verify email with OTP code.
 
-Display information about the authenticated user.
+**Request Body:**
 
-- **Responses**:
-  - **200**: User information retrieved successfully
-    ```json
-    {
-      "id": "string",
-      "fullName": "string",
-      "username": "string",
-      "email": "string",
-      "roles": [
-        {
-          "id": "string",
-          "roleName": "string",
-          "username": "string"
-        }
-      ],
-      "provider": "string",
-      "redeemCode": {
-        "id": "string",
-        "redeemCode": "string",
-        "redeemedBy": "string",
-        "redeemedAt": "string (date-time)",
-        "createdAt": "string (date-time)",
-        "used": "boolean"
-      },
-      "accountCreatedAt": "string (date-time)",
-      "verified": "boolean",
-      "otp": "string",
-      "otpGeneratedTime": "string (date-time)",
-      "userAvatar": "string",
-      "userAvatarpublicId": "string",
-      "userBanner": "string",
-      "userBannerpublicId": "string",
-      "premium": "boolean"
-    }
-    ```
-- **Security**: Bearer token required
+```json
+{
+  "email": "john@example.com",
+  "otp": "123456"
+}
+```
 
-#### Update Username
+**Response (200 OK):**
 
-**PUT** `/api/v1/users/username`
+```json
+{
+  "message": "Email verified successfully",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "success": true
+}
+```
 
-Update the authenticated user's username.
+#### POST /api/v1/auth/logout
 
-- **Parameters**:
-  - `username` (query, required): New username
-- **Responses**:
-  - **200**: Username updated successfully
-    ```json
-    {
-      "message": "string",
-      "timestamp": "string (date-time)",
-      "success": "boolean"
-    }
-    ```
-- **Security**: Bearer token required
+Logout and invalidate current session.
 
-### User Profile Update Controller
+**Headers:** `Authorization: Bearer <token>`
 
-#### Update Profile
+**Response (200 OK):**
 
-**PUT** `/api/v1/users/profile/update`
+```json
+{
+  "message": "Logged out successfully",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "success": true
+}
+```
 
-Update the authenticated user's profile, including avatar and banner.
+#### GET /api/v1/auth/reset-password
 
-- **Parameters**:
-  - `user` (query, required): User profile details
-    ```json
-    {
-      "fullName": "string",
-      "username": "string",
-      "email": "string",
-      "userAvatar": "string",
-      "userAvatarpublicId": "string",
-      "userBanner": "string",
-      "userBannerpublicId": "string",
-      "bio": "string",
-      "countryName": "string",
-      "city": "string",
-      "recoveryPhone": "string",
-      "recoveryEmail": "string",
-      "socialLinks": {
-        "additionalProperties": "string"
-      },
-      "jobTitle": "string",
-      "company": "string",
-      "website": "string",
-      "birthDate": "string (date-time)",
-      "gender": "string"
-    }
-    ```
-- **Request Body**:
-  ```json
+Request password reset via email.
+
+**Query Parameters:**
+
+- `email` (required): User's email address
+
+**Response (200 OK):**
+
+```json
+{
+  "message": "Password reset email sent",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "success": true
+}
+```
+
+#### POST /api/v1/auth/reset-password
+
+Complete password reset with token.
+
+**Query Parameters:**
+
+- `token` (required): Reset token from email
+- `newPassword` (required): New password
+
+**Response (200 OK):**
+
+```json
+{
+  "message": "Password reset successfully",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "success": true
+}
+```
+
+### User Management Endpoints
+
+#### GET /api/v1/users/me
+
+Get current user's profile information.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response (200 OK):**
+
+```json
+{
+  "id": "user-id-123",
+  "fullName": "John Doe",
+  "username": "johndoe",
+  "email": "john@example.com",
+  "roles": [{ "id": "1", "roleName": "USER", "username": "johndoe" }],
+  "provider": "local",
+  "accountCreatedAt": "2024-01-15T10:30:00Z",
+  "verified": true,
+  "userAvatar": "https://res.cloudinary.com/avatar.jpg",
+  "premium": false
+}
+```
+
+#### PUT /api/v1/users/profile/update
+
+Update user profile with optional file uploads.
+
+**Headers:**
+
+- `Authorization: Bearer <token>`
+- `Content-Type: multipart/form-data`
+
+**Form Data:**
+
+```
+user: {
+  "fullName": "John Doe Updated",
+  "bio": "Software Developer",
+  "countryName": "USA",
+  "city": "New York"
+}
+avatar: <image_file>
+banner: <image_file>
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "message": "Profile updated successfully",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "success": true
+}
+```
+
+#### PUT /api/v1/users/profile/update/username
+
+Update username.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Query Parameters:**
+
+- `username` (required): New username
+
+**Response (200 OK):**
+
+```json
+{
+  "message": "Username updated successfully",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "success": true
+}
+```
+
+#### PUT /api/v1/users/profile/update/email
+
+Update email address.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Query Parameters:**
+
+- `email` (required): New email address
+
+**Response (200 OK):**
+
+```json
+{
+  "message": "Email updated successfully. Please verify your new email.",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "success": true
+}
+```
+
+### Premium Features
+
+#### GET /api/v1/users/redeem
+
+Redeem premium code.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Query Parameters:**
+
+- `code` (required): Premium redeem code
+
+**Response (200 OK):**
+
+```json
+{
+  "message": "Premium activated successfully",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "success": true
+}
+```
+
+#### POST /api/v1/premium/generate
+
+Generate new premium redeem code (Admin only).
+
+**Headers:** `Authorization: Bearer <admin_token>`
+
+**Response (200 OK):**
+
+```json
+{
+  "id": "code-id-123",
+  "redeemCode": "PREMIUM-ABC123",
+  "redeemedBy": null,
+  "redeemedAt": null,
+  "createdAt": "2024-01-15T10:30:00Z",
+  "used": false
+}
+```
+
+### Admin Endpoints
+
+#### GET /api/v1/admins/getAllUsers
+
+Get all users (Admin only).
+
+**Headers:** `Authorization: Bearer <admin_token>`
+
+**Response (200 OK):**
+
+```json
+[
   {
-    "banner": "string (binary)",
-    "avatar": "string (binary)"
+    "id": "user-id-123",
+    "fullName": "John Doe",
+    "username": "johndoe",
+    "email": "john@example.com",
+    "verified": true,
+    "premium": false,
+    "accountCreatedAt": "2024-01-15T10:30:00Z"
   }
+]
+```
+
+#### GET /api/v1/admins/getAllUsers/{id}
+
+Get user by ID (Admin only).
+
+**Headers:** `Authorization: Bearer <admin_token>`
+
+**Path Parameters:**
+
+- `id` (required): User ID
+
+**Response (200 OK):**
+
+```json
+{
+  "id": "user-id-123",
+  "fullName": "John Doe",
+  "username": "johndoe",
+  "email": "john@example.com",
+  "roles": [{ "id": "1", "roleName": "USER" }],
+  "verified": true,
+  "premium": false,
+  "accountCreatedAt": "2024-01-15T10:30:00Z"
+}
+```
+
+#### POST /api/v1/admins/generatejwtToken/{emailOrUsername}
+
+Generate JWT token for user (Admin only).
+
+**Headers:** `Authorization: Bearer <admin_token>`
+
+**Path Parameters:**
+
+- `emailOrUsername` (required): User's email or username
+
+**Response (200 OK):**
+
+```
+"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+```
+
+## Error Handling
+
+### Error Response Format
+
+```json
+{
+  "error": "ERROR_CODE",
+  "message": "Human readable error message",
+  "details": ["Specific validation errors"],
+  "timestamp": "2024-01-15T10:30:00Z",
+  "path": "/api/v1/endpoint"
+}
+```
+
+### Common Error Codes
+
+| Status Code | Error Code       | Description                     |
+| ----------- | ---------------- | ------------------------------- |
+| 400         | VALIDATION_ERROR | Invalid input data              |
+| 401         | UNAUTHORIZED     | Authentication required         |
+| 403         | FORBIDDEN        | Insufficient permissions        |
+| 404         | NOT_FOUND        | Resource not found              |
+| 409         | CONFLICT         | Duplicate data (username/email) |
+| 429         | RATE_LIMITED     | Too many requests               |
+| 500         | INTERNAL_ERROR   | Server error                    |
+
+### Example Error Responses
+
+#### Validation Error (400)
+
+```json
+{
+  "error": "VALIDATION_ERROR",
+  "message": "Invalid input data",
+  "details": [
+    "Password must be at least 8 characters",
+    "Email format is invalid"
+  ],
+  "timestamp": "2024-01-15T10:30:00Z",
+  "path": "/api/v1/auth/register"
+}
+```
+
+#### Authentication Error (401)
+
+```json
+{
+  "error": "UNAUTHORIZED",
+  "message": "Invalid credentials",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "path": "/api/v1/auth/login"
+}
+```
+
+#### Permission Error (403)
+
+```json
+{
+  "error": "FORBIDDEN",
+  "message": "Admin access required",
+  "timestamp": "2024-01-15T10:30:00Z",
+  "path": "/api/v1/admins/getAllUsers"
+}
+```
+
+## Rate Limiting
+
+### Rate Limit Headers
+
+```http
+X-RateLimit-Remaining: 95
+X-RateLimit-Reset: 1642252800
+X-RateLimit-Limit: 100
+```
+
+### Default Limits by Endpoint Category
+
+| Category           | Limit        | Window   |
+| ------------------ | ------------ | -------- |
+| Authentication     | 5 requests   | 1 minute |
+| User Profile       | 10 requests  | 1 minute |
+| Premium Operations | 3 requests   | 1 hour   |
+| Admin Operations   | 50 requests  | 1 minute |
+| General API        | 100 requests | 1 minute |
+
+## Data Models
+
+### User Object
+
+```json
+{
+  "id": "string",
+  "fullName": "string",
+  "username": "string",
+  "email": "string",
+  "roles": [{ "id": "string", "roleName": "string" }],
+  "provider": "string",
+  "accountCreatedAt": "string (ISO 8601)",
+  "verified": "boolean",
+  "userAvatar": "string (URL)",
+  "userBanner": "string (URL)",
+  "premium": "boolean",
+  "bio": "string",
+  "countryName": "string",
+  "city": "string"
+}
+```
+
+### Premium Redeem Code Object
+
+```json
+{
+  "id": "string",
+  "redeemCode": "string",
+  "redeemedBy": "string",
+  "redeemedAt": "string (ISO 8601)",
+  "createdAt": "string (ISO 8601)",
+  "used": "boolean"
+}
+```
+
+## Security Considerations
+
+### Password Requirements
+
+- Minimum 8 characters
+- At least one uppercase letter
+- At least one lowercase letter
+- At least one number
+- At least one special character
+
+### JWT Security
+
+- Tokens are signed with HS256
+- Access tokens expire in 24 hours
+- Refresh tokens expire in 7 days
+- Tokens should be stored securely on client side
+
+### File Upload Security
+
+- Maximum file size: 5MB
+- Allowed image types: JPEG, PNG, GIF
+- Files are uploaded to Cloudinary with virus scanning
+- File names are sanitized
+
+## Testing
+
+### Test Account
+
+For development/testing purposes:
+
+```json
+{
+  "username": "testuser",
+  "email": "test@example.com",
+  "password": "TestPass123!"
+}
+```
+
+### Postman Collection
+
+Download the Postman collection: [SecureTOTP API Collection](./postman-collection.json)
+
+## Support
+
+- **Documentation**: https://docs.securetotp.com
+- **GitHub Issues**: https://github.com/securetotp/backend/issues
+- **Email Support**: api-support@securetotp.com
+- **Status Page**: https://status.securetotp.com
+
+## Changelog
+
+### Version 1.0 (Current)
+
+- Initial API release
+- JWT authentication
+- User management
+- Premium features
+- Admin endpoints
+- File upload support
   ```
-- **Responses**:
-  - **200**: Profile updated successfully
-    ```json
-    {
-      "message": "string",
-      "timestamp": "string (date-time)",
-      "success": "boolean"
-    }
-    ```
-- **Security**: Bearer token required
 
-#### Update Username
-
-**PUT** `/api/v1/users/profile/update/username`
-
-Update the authenticated user's username.
-
-- **Parameters**:
-  - `username` (query, required): New username
-- **Responses**:
-  - **200**: Username updated successfully
-    ```json
-    {
-      "message": "string",
-      "timestamp": "string (date-time)",
-      "success": "boolean"
-    }
-    ```
-- **Security**: Bearer token required
-
-#### Update Email
-
-**PUT** `/api/v1/users/profile/update/email`
-
-Update the authenticated user's email.
-
-- **Parameters**:
-  - `email` (query, required): New email
-- **Responses**:
-  - **200**: Email updated successfully
-    ```json
-    {
-      "message": "string",
-      "timestamp": "string (date-time)",
-      "success": "boolean"
-    }
-    ```
-- **Security**: Bearer token required
-
-### Premium Rest Controller
-
-#### Generate Redeem Code
-
-**POST** `/api/v1/premium/generate`
-
-Generate a new premium redeem code.
-
-- **Responses**:
-  - **200**: Redeem code generated successfully
-    ```json
-    {
-      "id": "string",
-      "redeemCode": "string",
-      "redeemedBy": "string",
-      "redeemedAt": "string (date-time)",
-      "createdAt": "string (date-time)",
-      "used": "boolean"
-    }
-    ```
-- **Security**: Bearer token required
-
-#### Get All Redeem Codes
-
-**GET** `/api/v1/premium/code`
-
-Retrieve all premium redeem codes.
-
-- **Responses**:
-  - **200**: List of redeem codes retrieved successfully
-    ```json
-    [
-      {
-        "id": "string",
-        "redeemCode": "string",
-        "redeemedBy": "string",
-        "redeemedAt": "string (date-time)",
-        "createdAt": "string (date-time)",
-        "used": "boolean"
-      }
-    ]
-    ```
-- **Security**: Bearer token required
-
-#### Get Redeem Code
-
-**GET** `/api/v1/premium/code/{code}`
-
-Retrieve a specific premium redeem code.
-
-- **Parameters**:
-  - `code` (path, required): Redeem code
-- **Responses**:
-  - **200**: Redeem code retrieved successfully
-    ```json
-    {
-      "id": "string",
-      "redeemCode": "string",
-      "redeemedBy": "string",
-      "redeemedAt": "string (date-time)",
-      "createdAt": "string (date-time)",
-      "used": "boolean"
-    }
-    ```
-- **Security**: Bearer token required
-
-### Auth Rest Controller
-
-#### Login
-
-**POST** `/api/v1/auth/login`
-
-Authenticate a user and return a JWT token.
-
-- **Parameters**:
-  - `error` (query, optional): Error message
-- **Request Body**:
-  ```json
-  {
-    "emailOrUsername": "string",
-    "password": "string"
-  }
   ```
-- **Responses**:
-  - **200**: Login successful
-    ```json
-    {
-      "token": "string",
-      "type": "Bearer",
-      "id": "string",
-      "username": "string",
-      "email": "string",
-      "roles": ["string"]
-    }
-    ```
-- **Security**: No additional security specified
-
-#### Logout
-
-**POST** `/api/v1/auth/logout`
-
-Log out the authenticated user.
-
-- **Responses**:
-  - **200**: Logout successful
-    ```json
-    {
-      "message": "string",
-      "timestamp": "string (date-time)",
-      "success": "boolean"
-    }
-    ```
-- **Security**: Bearer token required
-
-#### Register
-
-**POST** `/api/v1/auth/register`
-
-Register a new user.
-
-- **Request Body**:
-  ```json
-  {
-    "fullName": "string",
-    "username": "string",
-    "email": "string",
-    "password": "string",
-    "provider": "string"
-  }
-  ```
-- **Responses**:
-  - **200**: User registered successfully
-    ```json
-    {
-      "message": "string",
-      "timestamp": "string (date-time)",
-      "success": "boolean"
-    }
-    ```
-- **Security**: No additional security specified
-
-#### Resend OTP
-
-**POST** `/api/v1/auth/resend-otp`
-
-Resend an OTP for user verification.
-
-- **Request Body**:
-  ```json
-  {
-    "email": "string"
-  }
-  ```
-- **Responses**:
-  - **200**: OTP resent successfully
-    ```json
-    {
-      "message": "string",
-      "timestamp": "string (date-time)",
-      "success": "boolean"
-    }
-    ```
-- **Security**: No additional security specified
-
-#### Verify OTP
-
-**POST** `/api/v1/auth/verify-otp`
-
-Verify a user's OTP.
-
-- **Request Body**:
-  ```json
-  {
-    "email": "string",
-    "otp": "string"
-  }
-  ```
-- **Responses**:
-  - **200**: OTP verified successfully
-    ```json
-    {
-      "message": "string",
-      "timestamp": "string (date-time)",
-      "success": "boolean"
-    }
-    ```
-- **Security**: No additional security specified
-
-#### Reset Password (Request)
-
-**GET** `/api/v1/auth/reset-password`
-
-Request a password reset.
-
-- **Parameters**:
-  - `email` (query, required): User email
-- **Responses**:
-  - **200**: Password reset request successful
-    ```json
-    {
-      "message": "string",
-      "timestamp": "string (date-time)",
-      "success": "boolean"
-    }
-    ```
-- **Security**: No additional security specified
-
-#### Reset Password (Complete)
-
-**POST** `/api/v1/auth/reset-password`
-
-Complete the password reset process.
-
-- **Parameters**:
-  - `token` (query, required): Reset token
-  - `newPassword` (query, required): New password
-- **Responses**:
-  - **200**: Password reset successful
-    ```json
-    {
-      "message": "string",
-      "timestamp": "string (date-time)",
-      "success": "boolean"
-    }
-    ```
 - **Security**: No additional security specified
 
 #### Validate Token
