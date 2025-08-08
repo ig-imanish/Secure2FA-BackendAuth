@@ -1,7 +1,5 @@
 package com.bristoHQ.securetotp.security.jwt;
 
-
-
 import io.jsonwebtoken.*;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +20,7 @@ import java.util.function.Function;
 
 @Slf4j
 @Component
-public class JwtUtilities{
+public class JwtUtilities {
 
     @Value("${jwt.secret}")
     private String secret;
@@ -32,7 +30,6 @@ public class JwtUtilities{
 
     @Autowired
     private BlacklistedTokenRepository blacklistedTokenRepository;
-
 
     public String extractUsername(String token) {
         return extractClaim(token, Claims::getSubject);
@@ -46,35 +43,67 @@ public class JwtUtilities{
         final Claims claims = extractAllClaims(token);
         return claimsResolver.apply(claims);
     }
-    public Date extractExpiration(String token) { return extractClaim(token, Claims::getExpiration); }
+
+    public Date extractExpiration(String token) {
+        return extractClaim(token, Claims::getExpiration);
+    }
 
     public Boolean validateToken(String token, UserDetails userDetails) {
         final String email = extractUsername(token);
         return (email.equals(userDetails.getUsername()) && !isTokenExpired(token));
     }
+
     public Boolean isTokenExpired(String token) {
         return extractExpiration(token).before(new Date());
     }
 
-    public String generateToken(String email , List<String> roles) {
+    public String generateToken(String email, List<String> roles) {
 
-        return Jwts.builder().setSubject(email).claim("role",roles).setIssuedAt(new Date(System.currentTimeMillis()))
+        return Jwts.builder().setSubject(email).claim("role", roles).setIssuedAt(new Date(System.currentTimeMillis()))
                 .setExpiration(Date.from(Instant.now().plus(jwtExpiration, ChronoUnit.MILLIS)))
                 .signWith(SignatureAlgorithm.HS256, secret).compact();
     }
 
+    public String generateResetToken(String email) {
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + 15 * 60 * 1000); // 15 minutes
+
+        return Jwts.builder()
+                .setSubject(email)
+                .setIssuedAt(now)
+                .setExpiration(expiryDate)
+                .signWith(SignatureAlgorithm.HS256, secret)
+                .compact();
+    }
+    public String validateResetToken(String token) {
+        try {
+            Claims claims = Jwts.parser().setSigningKey(secret).parseClaimsJws(token).getBody();
+            String email = claims.getSubject();
+            Date expiration = claims.getExpiration();
+
+            if (expiration.before(new Date())) {
+                log.info("Reset token has expired.");
+                return null; // Token is expired
+            }
+            return email; // Valid token, return the email
+        } catch (JwtException e) {
+            log.info("Invalid reset token: {}", e.getMessage());
+            return null; // Invalid token
+        }
+    }
+
     public String generateTokenWithoutExpiration(String email, List<String> roles) {
-    return Jwts.builder()
-            .setSubject(email)
-            .claim("role", roles)
-            .setIssuedAt(new Date(System.currentTimeMillis()))
-            // No expiration date set
-            .signWith(SignatureAlgorithm.HS256, secret)
-            .compact();
-}
+        return Jwts.builder()
+                .setSubject(email)
+                .claim("role", roles)
+                .setIssuedAt(new Date(System.currentTimeMillis()))
+                // No expiration date set
+                .signWith(SignatureAlgorithm.HS256, secret)
+                .compact();
+    }
 
     public boolean validateToken(String token) {
-        if(blacklistedTokenRepository.existsByToken(token)) {
+        if (blacklistedTokenRepository.existsByToken(token)) {
             return false;
         }
         try {
@@ -99,10 +128,11 @@ public class JwtUtilities{
         return false;
     }
 
-    public String getToken (HttpServletRequest httpServletRequest) {
-         final String bearerToken = httpServletRequest.getHeader("Authorization");
-         if(StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer "))
-         {return bearerToken.substring(7,bearerToken.length()); } // The part after "Bearer "
-         return null;
+    public String getToken(HttpServletRequest httpServletRequest) {
+        final String bearerToken = httpServletRequest.getHeader("Authorization");
+        if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
+            return bearerToken.substring(7, bearerToken.length());
+        } // The part after "Bearer "
+        return null;
     }
 }

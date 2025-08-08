@@ -29,8 +29,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final CustomerUserDetailsService customerUserDetailsService;
 
-    public JwtAuthenticationFilter( @Lazy JwtUtilities jwtUtilities, @Lazy UserService userService,
-    @Lazy  CustomerUserDetailsService customerUserDetailsService) {
+    public JwtAuthenticationFilter(@Lazy JwtUtilities jwtUtilities, @Lazy UserService userService,
+            @Lazy CustomerUserDetailsService customerUserDetailsService) {
         this.jwtUtilities = jwtUtilities;
         this.userService = userService;
         this.customerUserDetailsService = customerUserDetailsService;
@@ -59,6 +59,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 log.info("authenticated user with email :{}", email);
                 SecurityContextHolder.getContext().setAuthentication(authentication);
 
+                // Set user information in request attributes for analytics
+                request.setAttribute("userId", email);
+                request.setAttribute("username", email);
             }
         }
         filterChain.doFilter(request, response);

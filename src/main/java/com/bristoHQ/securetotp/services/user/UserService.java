@@ -31,7 +31,7 @@ public interface UserService {
 
   List<UserDTO> getAllUsers();
 
-  UserDTO findById(Long id);
+  UserDTO findById(String id);
 
   void blacklistToken(String token);
 
@@ -57,10 +57,15 @@ public interface UserService {
 
   public UserDTO updateUsername(String oldUsername, String newUsername);
 
-  public UserDTO updateEmail(String usernameOrEmail, String newEmail) ;
+  public UserDTO updateEmail(String usernameOrEmail, String newEmail);
 
-  public Role updateUsernameInRole(String username);
+  public void updatePassword(String email, String newPassword);
+
+  public Role updateUsernameInRole(String oldUsername, String username);
 
   public boolean isUserExist(String email);
-   public boolean isUserExistByUsername(String username);
+
+  public boolean isUserExistByUsername(String username);
+
+  boolean checkPassword(String usernameOrEmail, String currentPassword);
 }

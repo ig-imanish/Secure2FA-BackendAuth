@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
-import java.util.Map;
 
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
@@ -48,28 +47,11 @@ public class User implements UserDetails {
     String userBanner;
     String userBannerpublicId;
 
-    // Social media profile details
-    String bio;
-    String countryName;
-    String city;
     String recoveryPhone;
     String recoveryEmail;
 
-    // Social media links
-    Map<String, String> socialLinks;
-
-    // Additional profile data
-    String jobTitle;
-    String company;
-    String website;
     Date birthDate;
     String gender;
-
-    // Account stats
-    int followersCount;
-    int followingCount;
-    List<String> followers;
-    List<String> following;
 
     String provider;
     boolean isPremium;
@@ -79,7 +61,6 @@ public class User implements UserDetails {
     Date lastActiveAt;
     Date profileUpdatedAt;
 
-    // Email verification
     boolean verified = false;
     String otp;
     LocalDateTime otpGeneratedTime;
@@ -125,42 +106,7 @@ public class User implements UserDetails {
         return true;
     }
 
-    // Helper methods for profile management
     public void updateLastActive() {
         this.lastActiveAt = new Date();
-    }
-
-    public void addFollower(String userId) {
-        if (this.followers == null) {
-            this.followers = new ArrayList<>();
-        }
-        if (!this.followers.contains(userId)) {
-            this.followers.add(userId);
-            this.followersCount = this.followers.size();
-        }
-    }
-
-    public void removeFollower(String userId) {
-        if (this.followers != null && this.followers.contains(userId)) {
-            this.followers.remove(userId);
-            this.followersCount = this.followers.size();
-        }
-    }
-
-    public void follow(String userId) {
-        if (this.following == null) {
-            this.following = new ArrayList<>();
-        }
-        if (!this.following.contains(userId)) {
-            this.following.add(userId);
-            this.followingCount = this.following.size();
-        }
-    }
-
-    public void unfollow(String userId) {
-        if (this.following != null && this.following.contains(userId)) {
-            this.following.remove(userId);
-            this.followingCount = this.following.size();
-        }
     }
 }

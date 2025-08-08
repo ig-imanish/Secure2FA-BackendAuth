@@ -7,11 +7,13 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 import com.bristoHQ.securetotp.models.role.Role;
 import com.bristoHQ.securetotp.models.role.RoleName;
 
-public interface RoleRepository extends MongoRepository<Role, Integer> {
+public interface RoleRepository extends MongoRepository<Role, String> {
 
     Role findByRoleName(String name);
 
     List<Role> findByRoleName(RoleName name);
 
     Role findById(Long id);
+
+    List<Role> findByUsername(String username);
 }

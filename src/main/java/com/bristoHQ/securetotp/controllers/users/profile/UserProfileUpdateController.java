@@ -19,6 +19,7 @@ import com.bristoHQ.securetotp.dto.MessageResponseDTO;
 import com.bristoHQ.securetotp.dto.auth.BearerToken;
 import com.bristoHQ.securetotp.dto.user.UserDTO;
 import com.bristoHQ.securetotp.dto.user.UserProfileUpdateDTO;
+import com.bristoHQ.securetotp.helper.Validator;
 import com.bristoHQ.securetotp.services.storage.CloudinaryService;
 import com.bristoHQ.securetotp.services.user.UserServiceImpl;
 
@@ -39,12 +40,16 @@ public class UserProfileUpdateController {
     @PutMapping()
     public ResponseEntity<MessageResponseDTO> postMethodName(@ModelAttribute UserProfileUpdateDTO user, @RequestParam(required = false) MultipartFile banner,
             @RequestParam(required = false) MultipartFile avatar, Principal principal) throws IOException {
-        System.out.println("hello");
+        System.out.println("/api/v1/users/profile/update - Entered update profile method");
         if (principal == null) {
             return ResponseEntity.status(401).body(new MessageResponseDTO(false, "Unauthorized: No user logged in", new Date()));
         }
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new MessageResponseDTO(false, "User data is required", new Date()));
+        }
+
         String username = principal.getName();
-        System.out.println(username);
+        System.out.println("Updating profile For Username - " + username);
         
         if (avatar != null) {
             try {
@@ -78,16 +83,27 @@ public class UserProfileUpdateController {
 
     @PutMapping("/email")
     public ResponseEntity<?> updateEmail(@RequestParam String email, Principal principal) {
+        if (email == null || email.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new MessageResponseDTO(false, "Email cannot be empty", new Date()));
+        }
+        if (principal == null || principal.getName() == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new MessageResponseDTO(false, "Unauthorized: No user logged in", new Date()));
+        }
+        Map<String, Object> validation = Validator.validateEmail(email);
+        if (!validation.get("status").equals(true)) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new MessageResponseDTO(false, validation.get("error").toString(), new Date()));
+        }
+        
         UserDTO user = userService.findByEmailOrUsername(principal.getName(), principal.getName());
         if(user == null) {
-            return ResponseEntity.status(404).body("User not found");
+            return ResponseEntity.status(404).body(new MessageResponseDTO(false, "User not found", new Date()));
         }
         if(user.getEmail().equalsIgnoreCase(email)){
-            return ResponseEntity.status(HttpStatus.NOT_ACCEPTABLE).body("Email is same as current email");
+            return ResponseEntity.status(HttpStatus.NOT_ACCEPTABLE).body(new MessageResponseDTO(false, "Email is same as current email", new Date()));
         }
         UserDTO alreadyExistUserByThisEmail = userService.findByEmail(email);
         if(alreadyExistUserByThisEmail != null){
-            return ResponseEntity.status(HttpStatus.IM_USED).body("Email already exists");
+            return ResponseEntity.status(HttpStatus.IM_USED).body(new MessageResponseDTO(false, "Email already exists", new Date()));
         }
         System.out.println(userService.updateEmail(principal.getName(), email));
         return ResponseEntity.ok(new BearerToken(userService.newJwtToken(email), "Bearer "));
@@ -95,16 +111,30 @@ public class UserProfileUpdateController {
     
     @PutMapping("/username")
     public ResponseEntity<?> updateUsername(@RequestParam String username, Principal principal) {
+        if (username == null || username.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new MessageResponseDTO(false, "Username cannot be empty", new Date()));
+        }
+        if (!username.startsWith("@")) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new MessageResponseDTO(false, "Username must start with '@'", new Date()));
+        }
+        if (principal == null || principal.getName() == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new MessageResponseDTO(false, "Unauthorized: No user logged in", new Date()));
+        }
+        Map<String, Object> validation = Validator.validateUsername(username);
+        if (!validation.get("status").equals(true)) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new MessageResponseDTO(false, validation.get("error").toString(), new Date()));
+        }
+        
         UserDTO user = userService.findByEmailOrUsername(principal.getName(), principal.getName());
         if(user == null) {
-            return ResponseEntity.status(404).body("User not found");
+            return ResponseEntity.status(404).body(new MessageResponseDTO(false, "User not found", new Date()));
         }
         if(user.getUsername().equalsIgnoreCase(username)){
-            return ResponseEntity.status(HttpStatus.NOT_ACCEPTABLE).body("Username is same as current username");
+            return ResponseEntity.status(HttpStatus.NOT_ACCEPTABLE).body(new MessageResponseDTO(false, "Username is same as current username", new Date()));
         }
         UserDTO alreadyExistUserByThisUsername = userService.findByUsername(username);
         if(alreadyExistUserByThisUsername != null){
-            return ResponseEntity.status(HttpStatus.IM_USED).body("Username already exists");
+            return ResponseEntity.status(HttpStatus.IM_USED).body(new MessageResponseDTO(false, "Username already exists", new Date()));
         }
        System.out.println(userService.updateUsername(principal.getName(), username));
         return ResponseEntity.ok(new BearerToken(userService.newJwtToken(username), "Bearer "));

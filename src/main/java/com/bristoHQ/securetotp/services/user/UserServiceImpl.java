@@ -23,6 +23,7 @@ import com.bristoHQ.securetotp.dto.auth.LoginDto;
 import com.bristoHQ.securetotp.dto.auth.RegisterDto;
 import com.bristoHQ.securetotp.dto.user.UserDTO;
 import com.bristoHQ.securetotp.dto.user.UserProfileUpdateDTO;
+import com.bristoHQ.securetotp.helper.EncryptionService;
 import com.bristoHQ.securetotp.models.User;
 import com.bristoHQ.securetotp.models.auth.BlacklistedToken;
 import com.bristoHQ.securetotp.models.role.Role;
@@ -51,6 +52,9 @@ public class UserServiceImpl implements UserService {
     private JwtUtilities jwtUtilities;
 
     @Autowired
+    private EncryptionService encryptionService;
+
+    @Autowired
     private UserDTOMapper dtoService;
 
     @Autowired
@@ -75,11 +79,11 @@ public class UserServiceImpl implements UserService {
     public ResponseEntity<?> register(RegisterDto registerDto) {
         System.out.println("Register method called with: " + registerDto);
 
-        if (iUserRepository.existsByEmail(registerDto.getEmail())) {
+        if (iUserRepository.existsByEmail(encryptionService.encrypt(registerDto.getEmail()))) {
             System.out.println("User with email already exists: " + registerDto.getEmail());
             return new ResponseEntity<>("Email is already taken!", HttpStatus.SEE_OTHER);
         }
-        if (iUserRepository.existsByUsername(registerDto.getUsername())) {
+        if (iUserRepository.existsByUsername(encryptionService.encrypt(registerDto.getUsername()))) {
             System.out.println("Username already exists: " + registerDto.getUsername());
             return new ResponseEntity<>("Username is already taken!", HttpStatus.SEE_OTHER);
         }
@@ -94,16 +98,23 @@ public class UserServiceImpl implements UserService {
         user.setUsername(registerDto.getUsername());
         user.setProvider(registerDto.getProvider());
         user.setAccountCreatedAt(new Date());
+        if (registerDto.getProvider().equals("GOOGLE")) {
+            user.setVerified(true); // Automatically verify Google users
+        } else {
+            user.setVerified(false); // Default to non-verified for other providers
+        }
+        // Automatically verify on registration
+        user.setPremium(false); // Default to non-premium
         user.setPassword(passwordEncoder.encode(registerDto.getPassword()));
 
         // Assign role with username
         Role role = new Role(RoleName.USER, user.getUsername());
         System.out.println("Saving role: " + role);
-        iRoleRepository.save(role);
+        saveRole(role);
 
         user.setRoles(Collections.singletonList(role));
         System.out.println("Saving user: " + user);
-        iUserRepository.save(user);
+        saveUser(encryptUser(user));
 
         System.out.println("User saved successfully: " + user);
 
@@ -117,25 +128,30 @@ public class UserServiceImpl implements UserService {
         try {
             // First check if user exists before attempting authentication
             boolean userExists = iUserRepository.findByEmailOrUsername(
-                    loginDto.getEmailOrUsername(), 
-                    loginDto.getEmailOrUsername()).isPresent();
-                    
+                    encryptionService.encrypt(loginDto.getEmailOrUsername()),
+                    encryptionService.encrypt(loginDto.getEmailOrUsername())).isPresent();
+
             if (!userExists) {
-                throw new UsernameNotFoundException("User not found with email/username: " + loginDto.getEmailOrUsername());
+                throw new UsernameNotFoundException(
+                        "User not found with email/username: " + loginDto.getEmailOrUsername());
             }
-            
+
             // Attempt authentication
             Authentication authentication = authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
                             loginDto.getEmailOrUsername(),
                             loginDto.getPassword()));
-                            
+
             SecurityContextHolder.getContext().setAuthentication(authentication);
-            
+
             // Get the authenticated user
-            User user = iUserRepository.findByEmailOrUsername(authentication.getName(), authentication.getName())
+            User user = iUserRepository
+                    .findByEmailOrUsername(encryptionService.encrypt(authentication.getName()),
+                            encryptionService.encrypt(authentication.getName()))
                     .orElseThrow(() -> new UsernameNotFoundException("User not found"));
-                    
+
+            // Decrypt user details before generating token
+            user = decryptUser(user);
             // Extract roles and generate token
             List<String> rolesNames = new ArrayList<>();
             user.getRoles().forEach(r -> rolesNames.add(r.getRoleName()));
@@ -160,29 +176,42 @@ public class UserServiceImpl implements UserService {
         if (emailOrUsername == null || emailOrUsername.isEmpty()) {
             throw new UsernameNotFoundException("User not found with token: " + actualToken);
         }
+        User user = iUserRepository.findByEmailOrUsername(encryptionService.encrypt(emailOrUsername),
+                encryptionService.encrypt(emailOrUsername)).isPresent()
+                        ? iUserRepository.findByEmailOrUsername(encryptionService.encrypt(emailOrUsername),
+                                encryptionService.encrypt(emailOrUsername)).get()
+                        : null;
 
-        return dtoService.convertUserToUserDTO(
-                iUserRepository.findByEmailOrUsername(emailOrUsername, emailOrUsername).isPresent() ? iUserRepository.findByEmailOrUsername(emailOrUsername, emailOrUsername).get() : null);
+        return dtoService.convertUserToUserDTO(decryptUser(user));
     }
 
     @Override
     public UserDTO findByEmail(String email) {
-        return dtoService.convertUserToUserDTO(
-                iUserRepository.findByEmail(email).isPresent() ? iUserRepository.findByEmail(email).get() : null);
+        System.out.println("Finding user by email: " + encryptionService.encrypt(email));
+        User user = iUserRepository.findByEmail(encryptionService.encrypt(email)).isPresent()
+                ? iUserRepository.findByEmail(encryptionService.encrypt(email)).get()
+                : null;
+        System.out.println("User found: " + user);
+        return dtoService.convertUserToUserDTO(decryptUser(user));
     }
 
     @Override
     public UserDTO findByUsername(String username) {
-        return dtoService.convertUserToUserDTO(
-                iUserRepository.findByUsername(username).isPresent() ? iUserRepository.findByUsername(username).get()
-                        : null);
+        User user = iUserRepository.findByUsername(encryptionService.encrypt(username)).isPresent()
+                ? iUserRepository.findByUsername(encryptionService.encrypt(username)).get()
+                : null;
+        return dtoService.convertUserToUserDTO(decryptUser(user));
     }
 
     @Override
     public UserDTO findByEmailOrUsername(String email, String username) {
-        return dtoService.convertUserToUserDTO(iUserRepository.findByEmailOrUsername(email, username).isPresent()
-                ? iUserRepository.findByEmailOrUsername(email, username).get()
-                : null);
+        return dtoService
+                .convertUserToUserDTO(decryptUser(iUserRepository
+                        .findByEmailOrUsername(encryptionService.encrypt(email), encryptionService.encrypt(username))
+                        .isPresent()
+                                ? iUserRepository.findByEmailOrUsername(encryptionService.encrypt(email),
+                                        encryptionService.encrypt(username)).get()
+                                : null));
     }
 
     @Override
@@ -190,13 +219,15 @@ public class UserServiceImpl implements UserService {
         if (iUserRepository.findAll().isEmpty()) {
             return null;
         }
-        return dtoService.convertUserToUserDTO(iUserRepository.findAll());
+        return dtoService.convertUserToUserDTO(
+                decryptUsers(iUserRepository.findAll() != null ? iUserRepository.findAll() : Collections.emptyList()));
     }
 
     @Override
-    public UserDTO findById(Long id) {
+    public UserDTO findById(String id) {
         return dtoService
-                .convertUserToUserDTO(iUserRepository.findById(id) == null ? null : iUserRepository.findById(id));
+                .convertUserToUserDTO(
+                        decryptUser(iUserRepository.findById(id).orElse(null)));
     }
 
     @Override
@@ -219,64 +250,72 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public boolean isUserPremiumByUsername(String username) {
-        return iUserRepository.findByUsernameAndIsPremium(username, true).isPresent();
+        return iUserRepository.findByUsernameAndIsPremium(encryptionService.encrypt(username), true).isPresent();
     }
 
     @Override
     public boolean isUserPremiumByEmail(String email) {
-        return iUserRepository.findByEmailAndIsPremium(email, true).isPresent();
+        return iUserRepository.findByEmailAndIsPremium(encryptionService.encrypt(email), true).isPresent();
     }
 
     @Override
     public boolean isUserPremiumByEmailOrUsername(String email, String username) {
-        return iUserRepository.findByEmailOrUsernameAndIsPremium(email, username, true).isPresent();
+        return iUserRepository.findByEmailOrUsernameAndIsPremium(encryptionService.encrypt(email),
+                encryptionService.encrypt(username), true).isPresent();
     }
 
     @Override
     public boolean isOAuthUser(String emailOrUsername) {
-        User user = iUserRepository.findByEmailOrUsername(emailOrUsername, emailOrUsername)
+        User user = iUserRepository
+                .findByEmailOrUsername(encryptionService.encrypt(emailOrUsername),
+                        encryptionService.encrypt(emailOrUsername))
                 .orElse(null);
-        
+
         if (user == null) {
             return false;
         }
-        
+
         String provider = user.getProvider();
-        // Check if provider is not null and not LOCAL (assuming LOCAL means regular login)
+        // Check if provider is not null and not LOCAL (assuming LOCAL means regular
+        // login)
         return provider != null && !provider.equalsIgnoreCase("LOCAL");
     }
 
     @Override
     public String newJwtToken(String emailOrUsername) {
-        User user = iUserRepository.findByEmailOrUsername(emailOrUsername, emailOrUsername).get();
+        User user = iUserRepository.findByEmailOrUsername(encryptionService.encrypt(emailOrUsername),
+                encryptionService.encrypt(emailOrUsername)).get();
         List<String> rolesNames = new ArrayList<>();
+        user = decryptUser(user); // Decrypt user details before generating token
         user.getRoles().forEach(r -> rolesNames.add(r.getRoleName()));
         return jwtUtilities.generateToken(user.getUsername(), rolesNames);
     }
 
     @Override
     public UserDTO updateUsername(String oldUsername, String newUsername) {
-        if (iUserRepository.findByUsername(newUsername).isPresent()) {
+        if (iUserRepository.findByUsername(encryptionService.encrypt(newUsername)).isPresent()) {
             return null;
         }
-        Optional<User> user = iUserRepository.findByUsername(oldUsername);
+        Optional<User> user = iUserRepository.findByUsername(encryptionService.encrypt(oldUsername));
         if (user.isPresent()) {
             user.get().setUsername(newUsername);
-            updateUsernameInRole(newUsername);
-            saveUser(user.get());
-            return dtoService.convertUserToUserDTO(user.get());
+            updateUsernameInRole(oldUsername, newUsername);
+            saveUser(encryptUser(user.get()));
+            return dtoService.convertUserToUserDTO(decryptUser(user.get()));
         }
         return null;
     }
 
     @Override
     public UserDTO updateEmail(String usernameOrEmail, String newEmail) {
-        if (iUserRepository.findByEmail(newEmail).isPresent()) {
+
+        if (iUserRepository.findByEmail(encryptionService.encrypt(newEmail)).isPresent()) {
             return null;
         }
-        Optional<User> user = iUserRepository.findByEmailOrUsername(usernameOrEmail, usernameOrEmail);
+        Optional<User> user = iUserRepository.findByEmailOrUsername(encryptionService.encrypt(usernameOrEmail),
+                encryptionService.encrypt(usernameOrEmail));
         if (user.isPresent()) {
-            user.get().setEmail(newEmail);
+            user.get().setEmail(encryptionService.encrypt(newEmail));
             saveUser(user.get());
             return dtoService.convertUserToUserDTO(user.get());
         }
@@ -284,22 +323,56 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public Role updateUsernameInRole(String username) {
-        Optional<User> user = iUserRepository.findByUsername(username);
+    public Role updateUsernameInRole(String oldUsername, String username) {
+        Optional<User> user = iUserRepository.findByUsername(encryptionService.encrypt(oldUsername));
         if (user.isPresent()) {
             Role role = user.get().getRoles().get(0);
-            role.setUsername(user.get().getUsername());
+            role.setUsername(username);
             return iRoleRepository.save(role);
         }
         return null;
     }
 
-    @Override
-    public void updateUserDetails(String username, UserProfileUpdateDTO updatedUser) {
-        Optional<User> userOptional = iUserRepository.findByUsername(username);
+    public void updatePassword(String email, String newPassword) {
+        Optional<User> userOptional = iUserRepository.findByEmailOrUsername(encryptionService.encrypt(email),
+                encryptionService.encrypt(email));
 
         if (userOptional.isPresent()) {
             User user = userOptional.get();
+            user.setPassword(passwordEncoder.encode(newPassword));
+            iUserRepository.save(user);  // Save directly since user is already encrypted
+        } else {
+            throw new UsernameNotFoundException("User not found with email: " + email);
+        }
+    }
+
+    public boolean checkPassword(String usernameOrEmail, String currentPassword){
+        User user = iUserRepository.findByEmailOrUsername(encryptionService.encrypt(usernameOrEmail),
+                encryptionService.encrypt(usernameOrEmail)).orElse(null);
+        if (user == null || user.getPassword() == null) {
+            return false;
+        }
+        return passwordEncoder.matches(currentPassword, user.getPassword());
+    }
+
+    // public boolean saveNewPassword(String usernameOrEmail, String newPassword) {
+    //     User user = iUserRepository.findByEmailOrUsername(encryptionService.encrypt(usernameOrEmail),
+    //             encryptionService.encrypt(usernameOrEmail)).orElse(null);
+    //     if (user == null) {
+    //         return false; // User not found
+    //     }
+    //     user.setPassword(passwordEncoder.encode(newPassword));
+    //     iUserRepository.save(encryptUser(user));
+    //     return true;
+    // }
+
+    @Override
+    public void updateUserDetails(String username, UserProfileUpdateDTO updatedUser) {
+        Optional<User> userOptional = iUserRepository.findByUsername(encryptionService.encrypt(username));
+
+        if (userOptional.isPresent()) {
+            User user = userOptional.get();
+            user = decryptUser(user); // Decrypt user details before updating
 
             if (updatedUser.getFullName() != null) {
                 user.setFullName(updatedUser.getFullName());
@@ -316,33 +389,14 @@ public class UserServiceImpl implements UserService {
             if (updatedUser.getUserBanner() != null) {
                 user.setUserBanner(updatedUser.getUserBanner());
             }
-            if (updatedUser.getBio() != null) {
-                user.setBio(updatedUser.getBio());
-            }
-            if (updatedUser.getCountryName() != null) {
-                user.setCountryName(updatedUser.getCountryName());
-            }
-            if (updatedUser.getCity() != null) {
-                user.setCity(updatedUser.getCity());
-            }
+
             if (updatedUser.getRecoveryPhone() != null) {
                 user.setRecoveryPhone(updatedUser.getRecoveryPhone());
             }
             if (updatedUser.getRecoveryEmail() != null) {
                 user.setRecoveryEmail(updatedUser.getRecoveryEmail());
             }
-            if (updatedUser.getSocialLinks() != null) {
-                user.setSocialLinks(updatedUser.getSocialLinks());
-            }
-            if (updatedUser.getJobTitle() != null) {
-                user.setJobTitle(updatedUser.getJobTitle());
-            }
-            if (updatedUser.getCompany() != null) {
-                user.setCompany(updatedUser.getCompany());
-            }
-            if (updatedUser.getWebsite() != null) {
-                user.setWebsite(updatedUser.getWebsite());
-            }
+
             if (updatedUser.getBirthDate() != null) {
                 user.setBirthDate(updatedUser.getBirthDate());
             }
@@ -366,15 +420,217 @@ public class UserServiceImpl implements UserService {
 
             System.out.println("User updated: " + user);
             user.setProfileUpdatedAt(new Date());
-            iUserRepository.save(user);
+            saveUser(encryptUser(user));
         }
     }
 
     @Override
-    public boolean isUserExist(String email){
-        return iUserRepository.existsByEmail(email);
+    public boolean isUserExist(String email) {
+        return iUserRepository.existsByEmail(encryptionService.encrypt(email));
     }
-    public boolean isUserExistByUsername(String username){
-        return iUserRepository.existsByUsername(username);
+
+    public boolean isUserExistByUsername(String username) {
+        return iUserRepository.existsByUsername(encryptionService.encrypt(username));
+    }
+
+    @SuppressWarnings("unused")
+    private List<UserDTO> encryptUsersDTO(List<UserDTO> users) {
+        if (encryptionService == null) {
+            throw new IllegalStateException("EncryptionService is not initialized");
+        }
+        if (users == null || users.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<UserDTO> encryptedUsers = new ArrayList<>();
+        for (UserDTO user : users) {
+            encryptedUsers.add(encryptUser(user));
+        }
+        return encryptedUsers;
+    }
+
+    @SuppressWarnings("unused")
+    private List<User> encryptUsers(List<User> users) {
+        if (encryptionService == null) {
+            throw new IllegalStateException("EncryptionService is not initialized");
+        }
+        if (users == null || users.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<User> encryptedUsers = new ArrayList<>();
+        for (User user : users) {
+            encryptedUsers.add(encryptUser(user));
+        }
+        return encryptedUsers;
+    }
+
+    @SuppressWarnings("unused")
+    private List<UserDTO> decryptUsersDTO(List<UserDTO> users) {
+        if (encryptionService == null) {
+            throw new IllegalStateException("EncryptionService is not initialized");
+        }
+        if (users == null || users.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<UserDTO> decryptedUsers = new ArrayList<>();
+        for (UserDTO user : users) {
+            decryptedUsers.add(decryptUser(user));
+        }
+        return decryptedUsers;
+    }
+
+    private List<User> decryptUsers(List<User> users) {
+        if (encryptionService == null) {
+            throw new IllegalStateException("EncryptionService is not initialized");
+        }
+        if (users == null || users.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<User> decryptedUsers = new ArrayList<>();
+        for (User user : users) {
+            decryptedUsers.add(decryptUser(user));
+        }
+        return decryptedUsers;
+    }
+
+    private User encryptUser(User user) {
+        if (encryptionService == null) {
+            throw new IllegalStateException("EncryptionService is not initialized");
+        }
+        if (user == null) {
+            return null;
+        }
+        User encryptedUser = new User();
+        encryptedUser.setId(user.getId());
+        encryptedUser.setFullName(null != user.getFullName() ? encryptionService.encrypt(user.getFullName()) : null);
+        encryptedUser.setUsername(null != user.getUsername() ? encryptionService.encrypt(user.getUsername()) : null);
+        encryptedUser.setEmail(null != user.getEmail() ? encryptionService.encrypt(user.getEmail()) : null);
+        encryptedUser.setPassword(user.getPassword()); // Password should not be encrypted
+        encryptedUser.setRoles(user.getRoles());
+        encryptedUser.setProvider(user.getProvider());
+        encryptedUser.setPremium(user.isPremium());
+        encryptedUser.setRedeemCode(user.getRedeemCode());
+
+        encryptedUser.setAccountCreatedAt(user.getAccountCreatedAt());
+        encryptedUser.setVerified(user.isVerified());
+        encryptedUser.setOtp(null != user.getOtp() ? encryptionService.encrypt(user.getOtp()) : null);
+        encryptedUser.setOtpGeneratedTime(user.getOtpGeneratedTime());
+        encryptedUser.setUserAvatar(
+                null != user.getUserAvatar() ? encryptionService.encrypt(user.getUserAvatar()) : null);
+        encryptedUser.setUserAvatarpublicId(
+                null != user.getUserAvatarpublicId() ? encryptionService.encrypt(user.getUserAvatarpublicId())
+                        : null);
+        encryptedUser.setUserBanner(
+                null != user.getUserBanner() ? encryptionService.encrypt(user.getUserBanner()) : null);
+        encryptedUser.setUserBannerpublicId(
+                null != user.getUserBannerpublicId() ? encryptionService.encrypt(user.getUserBannerpublicId())
+                        : null);
+        return encryptedUser;
+    }
+
+    private User decryptUser(User user) {
+        if (encryptionService == null) {
+            throw new IllegalStateException("EncryptionService is not initialized");
+        }
+        if (user == null) {
+            return null;
+        }
+        User decryptedUser = new User();
+        decryptedUser.setId(user.getId());
+        decryptedUser.setFullName(null != user.getFullName() ? encryptionService.decrypt(user.getFullName()) : null);
+        decryptedUser.setUsername(null != user.getUsername() ? encryptionService.decrypt(user.getUsername()) : null);
+        decryptedUser.setEmail(null != user.getEmail() ? encryptionService.decrypt(user.getEmail()) : null);
+        decryptedUser.setPassword(user.getPassword()); // Password should not be decrypted
+        decryptedUser.setRoles(user.getRoles());
+        decryptedUser.setProvider(user.getProvider());
+        decryptedUser.setPremium(user.isPremium());
+        decryptedUser.setRedeemCode(user.getRedeemCode());
+
+        decryptedUser.setAccountCreatedAt(user.getAccountCreatedAt());
+        decryptedUser.setVerified(user.isVerified());
+        decryptedUser.setOtp(null != user.getOtp() ? encryptionService.decrypt(user.getOtp()) : null);
+        decryptedUser.setOtpGeneratedTime(user.getOtpGeneratedTime());
+        decryptedUser.setUserAvatar(
+                null != user.getUserAvatar() ? encryptionService.decrypt(user.getUserAvatar()) : null);
+        decryptedUser.setUserAvatarpublicId(
+                null != user.getUserAvatarpublicId() ? encryptionService.decrypt(user.getUserAvatarpublicId())
+                        : null);
+        decryptedUser.setUserBanner(
+                null != user.getUserBanner() ? encryptionService.decrypt(user.getUserBanner()) : null);
+        decryptedUser.setUserBannerpublicId(
+                null != user.getUserBannerpublicId() ? encryptionService.decrypt(user.getUserBannerpublicId())
+                        : null);
+        return decryptedUser;
+    }
+
+    private UserDTO encryptUser(UserDTO userDTO) {
+        if (encryptionService == null) {
+            throw new IllegalStateException("EncryptionService is not initialized");
+        }
+        if (userDTO == null) {
+            return null;
+        }
+        UserDTO encryptedUser = new UserDTO();
+        encryptedUser.setId(userDTO.getId());
+        encryptedUser
+                .setFullName(null != userDTO.getFullName() ? encryptionService.encrypt(userDTO.getFullName()) : null);
+        encryptedUser
+                .setUsername(null != userDTO.getUsername() ? encryptionService.encrypt(userDTO.getUsername()) : null);
+        encryptedUser.setEmail(null != userDTO.getEmail() ? encryptionService.encrypt(userDTO.getEmail()) : null);
+        encryptedUser.setRoles(userDTO.getRoles());
+        encryptedUser.setProvider(userDTO.getProvider());
+        encryptedUser.setPremium(userDTO.isPremium());
+        encryptedUser.setRedeemCode(userDTO.getRedeemCode());
+
+        encryptedUser.setAccountCreatedAt(userDTO.getAccountCreatedAt());
+        encryptedUser.setVerified(userDTO.isVerified());
+        encryptedUser.setOtp(null != userDTO.getOtp() ? encryptionService.encrypt(userDTO.getOtp()) : null);
+        encryptedUser.setOtpGeneratedTime(userDTO.getOtpGeneratedTime());
+        encryptedUser.setUserAvatar(
+                null != userDTO.getUserAvatar() ? encryptionService.encrypt(userDTO.getUserAvatar()) : null);
+        encryptedUser.setUserAvatarpublicId(
+                null != userDTO.getUserAvatarpublicId() ? encryptionService.encrypt(userDTO.getUserAvatarpublicId())
+                        : null);
+        encryptedUser.setUserBanner(
+                null != userDTO.getUserBanner() ? encryptionService.encrypt(userDTO.getUserBanner()) : null);
+        encryptedUser.setUserBannerpublicId(
+                null != userDTO.getUserBannerpublicId() ? encryptionService.encrypt(userDTO.getUserBannerpublicId())
+                        : null);
+        return encryptedUser;
+    }
+
+    private UserDTO decryptUser(UserDTO userDTO) {
+        if (encryptionService == null) {
+            throw new IllegalStateException("EncryptionService is not initialized");
+        }
+        if (userDTO == null) {
+            return null;
+        }
+        UserDTO decryptedUser = new UserDTO();
+        decryptedUser.setId(userDTO.getId());
+        decryptedUser
+                .setFullName(null != userDTO.getFullName() ? encryptionService.decrypt(userDTO.getFullName()) : null);
+        decryptedUser
+                .setUsername(null != userDTO.getUsername() ? encryptionService.decrypt(userDTO.getUsername()) : null);
+        decryptedUser.setEmail(null != userDTO.getEmail() ? encryptionService.decrypt(userDTO.getEmail()) : null);
+        decryptedUser.setRoles(userDTO.getRoles());
+        decryptedUser.setProvider(userDTO.getProvider());
+        decryptedUser.setPremium(userDTO.isPremium());
+        decryptedUser.setRedeemCode(userDTO.getRedeemCode());
+
+        decryptedUser.setAccountCreatedAt(userDTO.getAccountCreatedAt());
+        decryptedUser.setVerified(userDTO.isVerified());
+        decryptedUser.setOtp(null != userDTO.getOtp() ? encryptionService.decrypt(userDTO.getOtp()) : null);
+        decryptedUser.setOtpGeneratedTime(userDTO.getOtpGeneratedTime());
+        decryptedUser.setUserAvatar(
+                null != userDTO.getUserAvatar() ? encryptionService.decrypt(userDTO.getUserAvatar()) : null);
+        decryptedUser.setUserAvatarpublicId(
+                null != userDTO.getUserAvatarpublicId() ? encryptionService.decrypt(userDTO.getUserAvatarpublicId())
+                        : null);
+        decryptedUser.setUserBanner(
+                null != userDTO.getUserBanner() ? encryptionService.decrypt(userDTO.getUserBanner()) : null);
+        decryptedUser.setUserBannerpublicId(
+                null != userDTO.getUserBannerpublicId() ? encryptionService.decrypt(userDTO.getUserBannerpublicId())
+                        : null);
+        return decryptedUser;
     }
 }

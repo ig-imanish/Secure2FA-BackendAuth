@@ -53,10 +53,10 @@ public class CustomSuccessHandler implements AuthenticationSuccessHandler {
 			System.out.println("Email: " + email);
 
 			userDetails.getAttributes().forEach((k, v) -> System.out.println(k + " : " + v));
-			if (userRepo.findByEmail(email).isEmpty()) {
+			if (email != null && userRepo.findByEmail(email).isEmpty()) {
 				RegisterDto user = new RegisterDto();
 				user.setEmail(email);
-				user.setUsername(email);
+				user.setUsername(email.split("@")[0]);
 				user.setProvider("GOOGLE");
 				user.setFullName(userDetails.getAttribute("name"));
 				user.setPassword(("NoPass"));
