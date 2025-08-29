@@ -2,6 +2,7 @@ package com.bristoHQ.securetotp.controllers.users;
 
 import java.security.Principal;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -10,12 +11,20 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
 
 import com.bristoHQ.securetotp.dto.MessageResponseDTO;
 import com.bristoHQ.securetotp.dto.auth.BearerToken;
+import com.bristoHQ.securetotp.dto.user.AdminUserActionDTO;
 import com.bristoHQ.securetotp.dto.user.UserDTO;
 import com.bristoHQ.securetotp.helper.Validator;
+import com.bristoHQ.securetotp.services.admin.AdminUserManagementService;
 import com.bristoHQ.securetotp.services.premium.PremiumService;
 import com.bristoHQ.securetotp.services.user.UserServiceImpl;
 
@@ -28,6 +37,8 @@ public class PrivateUserController {
 
     private final UserServiceImpl userService;
     private final PremiumService premiumService;
+
+    private final AdminUserManagementService adminUserManagementService;
 
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
@@ -88,5 +99,14 @@ public class PrivateUserController {
 
         userService.updateUsername(principal.getName(), username);
         return ResponseEntity.ok(new BearerToken(userService.newJwtToken(username), "Bearer "));
+    }
+
+    @DeleteMapping("/users/{userId}")
+    public ResponseEntity<Map<String, String>> deleteUser(@PathVariable String userId) {
+        AdminUserActionDTO actionDTO = new AdminUserActionDTO("DELETE", null, null);
+        String result = adminUserManagementService.performUserAction(userId, actionDTO);
+        Map<String, String> response = new HashMap<>();
+        response.put("message", result);
+        return ResponseEntity.ok(response);
     }
 }

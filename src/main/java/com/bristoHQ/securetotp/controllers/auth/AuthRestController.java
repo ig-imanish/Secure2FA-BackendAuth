@@ -42,7 +42,7 @@ public class AuthRestController {
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody RegisterDto registerDto) {
-        emailService.welcomeEmailToNewUser(registerDto.getEmail());
+
         System.out.println("Received registration request: " + registerDto);
 
         Map<String, Object> passResult = Validator.validatePassword(registerDto.getPassword());
@@ -71,6 +71,27 @@ public class AuthRestController {
             System.out.println("Full name is required for registration");
             return ResponseEntity.badRequest()
                     .body(new MessageResponseDTO(false, "Full name is required", new Date()));
+        }
+
+        // Validate full name length
+        if (registerDto.getFullName().trim().length() < 2) {
+            System.out.println("Full name validation failed: Full name must be at least 2 characters");
+            return ResponseEntity.badRequest()
+                    .body(new MessageResponseDTO(false, "Full name must be at least 2 characters", new Date()));
+        }
+
+        if (registerDto.getFullName().trim().length() > 12) {
+            System.out.println("Full name validation failed: Full name must not exceed 12 characters");
+            return ResponseEntity.badRequest()
+                    .body(new MessageResponseDTO(false, "Full name must not exceed 12 characters", new Date()));
+        }
+
+        // Validate full name format (letters, spaces, hyphens, apostrophes only)
+        if (!registerDto.getFullName().trim().matches("^[a-zA-Z\\s'\\-]+$")) {
+            System.out.println("Full name validation failed: Full name contains invalid characters");
+            return ResponseEntity.badRequest()
+                    .body(new MessageResponseDTO(false,
+                            "Full name can only contain letters, spaces, hyphens, and apostrophes", new Date()));
         }
 
         if (registerDto.getPassword() == null || registerDto.getPassword().isEmpty()) {
@@ -126,6 +147,8 @@ public class AuthRestController {
                 // If registration failed, return the error
                 return registrationResponse;
             }
+
+            emailService.welcomeEmailToNewUser(registerDto.getEmail());
 
             // Try to send OTP email but don't fail registration if it fails
             try {
